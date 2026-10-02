@@ -1,0 +1,73 @@
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: apiflow-db
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
+    volumes:
+      - apiflow-mssql-data:/var/opt/mssql
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q \"SELECT 1\" || exit 1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  db-init:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - >
+        /opt/mssql-tools18/bin/sqlcmd -S db -U sa -P "$$MSSQL_SA_PASSWORD" -C
+        -Q "IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = N'ApiFlow') CREATE DATABASE ApiFlow;"
+    restart: "no"
+
+  server:
+    build:
+      context: ./server
+    container_name: apiflow-server
+    depends_on:
+      db:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      CLIENT_URL: http://localhost:8080
+      DATABASE_URL: sqlserver://db:1433;database=ApiFlow;user=sa;password=${MSSQL_SA_PASSWORD};encrypt=true;trustServerCertificate=true
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+    expose:
+      - "3000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 3000 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 90s
+
+  client:
+    build:
+      context: ./client
+    container_name: apiflow-client
+    depends_on:
+      server:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+volumes:
+  apiflow-mssql-data:

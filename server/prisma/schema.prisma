@@ -1,0 +1,114 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              Int                @id @default(autoincrement())
+  email           String             @unique
+  passwordHash    String
+  name            String
+  createdAt       DateTime           @default(now())
+  collections     Collection[]
+  environments    Environment[]
+  history         RequestHistory[]
+  loadTestReports LoadTestReport[]
+}
+
+model Collection {
+  id        Int       @id @default(autoincrement())
+  name      String
+  userId    Int
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requests  Request[]
+}
+
+model Request {
+  id           Int          @id @default(autoincrement())
+  name         String
+  method       String
+  url          String
+  headers      String       @default("{}") @db.NVarChar(Max)
+  queryParams  String       @default("{}") @db.NVarChar(Max)
+  body         String?      @db.NVarChar(Max)
+  collectionId Int
+  createdAt    DateTime     @default(now())
+  collection   Collection   @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  testScripts  TestScript[]
+}
+
+model Environment {
+  id        Int                   @id @default(autoincrement())
+  name      String
+  userId    Int
+  createdAt DateTime              @default(now())
+  user      User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  variables EnvironmentVariable[]
+}
+
+model EnvironmentVariable {
+  id            Int         @id @default(autoincrement())
+  key           String
+  value         String
+  environmentId Int
+  environment   Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+}
+
+model TestScript {
+  id        Int       @id @default(autoincrement())
+  name      String
+  code      String    @db.NVarChar(Max)
+  requestId Int
+  createdAt DateTime  @default(now())
+  runs      TestRun[]
+  request   Request   @relation(fields: [requestId], references: [id], onDelete: Cascade)
+}
+
+model TestRun {
+  id           Int          @id @default(autoincrement())
+  testScriptId Int
+  status       String
+  createdAt    DateTime     @default(now())
+  results      TestResult[]
+  testScript   TestScript   @relation(fields: [testScriptId], references: [id], onDelete: Cascade)
+}
+
+model TestResult {
+  id        Int     @id @default(autoincrement())
+  runId     Int
+  assertion String
+  passed    Boolean
+  message   String?
+  run       TestRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+}
+
+model RequestHistory {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  requestData  String   @db.NVarChar(Max)
+  responseData String   @db.NVarChar(Max)
+  durationMs   Int
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model LoadTestReport {
+  id             Int      @id @default(autoincrement())
+  userId         Int
+  jobId          String   @unique
+  requestData    String   @db.NVarChar(Max)
+  summaryData    String   @db.NVarChar(Max)
+  performanceData String  @db.NVarChar(Max)
+  statusCodes    String   @db.NVarChar(Max)
+  errorsData     String   @db.NVarChar(Max)
+  createdAt      DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([jobId])
+}
